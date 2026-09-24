@@ -17,8 +17,11 @@ KEYWORD_K = 8
 RRF_K = 60
 
 
-# Load BM25 only once
-bm25, all_documents = load_bm25_index()
+# ---------------------------------------------------------
+# BM25 is loaded only when first search is performed
+# ---------------------------------------------------------
+bm25 = None
+all_documents = None
 
 
 def get_document_key(document):
@@ -113,11 +116,28 @@ def diversify_results(
 def hybrid_search(
     query,
     k=8,
-    min_score=0.65, 
+    min_score=0.65,
     classification=None
 ):
 
+    global bm25, all_documents
+
     start = time.time()
+
+    # ---------------------------------------------------------
+    # Load BM25 only when search is actually requested
+    # ---------------------------------------------------------
+    if bm25 is None or all_documents is None:
+
+        print("Loading BM25 index...")
+
+        bm25, all_documents = load_bm25_index()
+
+        print(
+            "BM25 index loaded:",
+            len(all_documents),
+            "documents"
+        )
 
     # ---------------------------------------------------------
     # Add classifier routing terms
@@ -184,6 +204,7 @@ def hybrid_search(
             )
 
         if routing_terms:
+
             search_query = (
                 query
                 + " "

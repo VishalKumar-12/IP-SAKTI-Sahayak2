@@ -1,13 +1,26 @@
 from backend.rag.vector_store import get_vector_store
 
 
-# Create vector store only once
-_vector_store = get_vector_store()
+# Create vector store only when needed
+_vector_store = None
+
+
+def get_vector_store_instance():
+
+    global _vector_store
+
+    if _vector_store is None:
+        print("Loading vector store...")
+        _vector_store = get_vector_store()
+
+    return _vector_store
 
 
 def get_retriever():
 
-    return _vector_store.as_retriever(
+    vector_store = get_vector_store_instance()
+
+    return vector_store.as_retriever(
         search_type="similarity",
         search_kwargs={"k": 8}
     )
@@ -39,7 +52,9 @@ def retrieve_with_scores(
     min_score=0.65
 ):
 
-    results = _vector_store.similarity_search_with_score(
+    vector_store = get_vector_store_instance()
+
+    results = vector_store.similarity_search_with_score(
         query,
         k=k
     )
@@ -62,7 +77,10 @@ def retrieve_with_scores(
             seen.add(key)
 
             unique_results.append(
-                (document, score)
+                (
+                    document,
+                    score
+                )
             )
 
     return unique_results

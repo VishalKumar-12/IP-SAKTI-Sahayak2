@@ -1,21 +1,24 @@
+import os
 from sentence_transformers import CrossEncoder
 
-
-print("RERANKER MODULE LOADED")
-
-
-# MS MARCO Cross-Encoder
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
-
-# Load the model only once when this module is imported
-_reranker = CrossEncoder(
-    MODEL_NAME,
-    max_length=512
-)
+_reranker = None
 
 
 def get_reranker():
+    global _reranker
+
+    if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
+        return None
+
+    if _reranker is None:
+        print("Loading CrossEncoder reranker...")
+        _reranker = CrossEncoder(
+            MODEL_NAME,
+            max_length=512
+        )
+
     return _reranker
 
 
@@ -26,18 +29,14 @@ def rerank_documents(query, results, top_k=5):
 
     reranker = get_reranker()
 
-    # -----------------------------------------
-    # Extract documents
-    # -----------------------------------------
+    # Render / lightweight mode
+    if reranker is None:
+        return results[:top_k]
 
     documents = [
         document
         for document, _ in results
     ]
-
-    # -----------------------------------------
-    # Create query-document pairs
-    # -----------------------------------------
 
     pairs = [
         (
@@ -48,31 +47,17 @@ def rerank_documents(query, results, top_k=5):
     ]
 
     try:
-
         scores = reranker.predict(
             pairs,
             show_progress_bar=False
         )
-
     except Exception as e:
-
-        print(
-            f"RERANKER ERROR: {e}"
-        )
-
-        return []
-
-    # -----------------------------------------
-    # Combine documents with scores
-    # -----------------------------------------
+        print(f"RERANKER ERROR: {e}")
+        return results[:top_k]
 
     reranked = []
 
-    for document, score in zip(
-        documents,
-        scores
-    ):
-
+    for document, score in zip(documents, scores):
         reranked.append(
             (
                 document,
@@ -80,17 +65,9 @@ def rerank_documents(query, results, top_k=5):
             )
         )
 
-    # -----------------------------------------
-    # Highest relevance first
-    # -----------------------------------------
-
     reranked.sort(
         key=lambda item: item[1],
         reverse=True
     )
-
-    # -----------------------------------------
-    # Return top documents
-    # -----------------------------------------
 
     return reranked[:top_k]
