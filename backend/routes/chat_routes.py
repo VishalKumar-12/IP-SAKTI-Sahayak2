@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 import time
 import json
 from urllib.parse import quote
+import os
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
@@ -35,28 +36,40 @@ def _build_considerations(classification):
     ip_type = classification.get("ip_type")
     checks = classification.get("checks") or {}
 
-    # Jurisdiction
+    # =========================================================
+    # JURISDICTION
+    # =========================================================
+
     if jurisdiction and jurisdiction != "unknown":
         considerations.append(
             f"Jurisdiction: Check the applicable IP and regulatory "
             f"requirements for {jurisdiction}."
         )
 
-    # Patentability
+    # =========================================================
+    # PATENTABILITY
+    # =========================================================
+
     if checks.get("patent"):
         considerations.append(
             "Patentability: Check novelty, inventive step "
             "(non-obviousness), and industrial applicability."
         )
 
-    # Prior art
+    # =========================================================
+    # PRIOR ART
+    # =========================================================
+
     if checks.get("prior_art"):
         considerations.append(
             "Prior art: Check whether the invention, formulation, "
             "or process has already been disclosed or is already known."
         )
 
-    # Traditional knowledge / TKDL
+    # =========================================================
+    # TRADITIONAL KNOWLEDGE / TKDL
+    # =========================================================
+
     if checks.get("tkdl"):
         considerations.append(
             "Traditional knowledge: Check whether the subject matter "
@@ -64,62 +77,86 @@ def _build_considerations(classification):
             "such as TKDL."
         )
 
-    # Product classification
+    # =========================================================
+    # PRODUCT CLASSIFICATION
+    # =========================================================
+
     if checks.get("product_classification"):
         considerations.append(
             "Product classification: Determine the applicable "
             "classification of the Ayurvedic product or formulation."
         )
 
-    # Regulatory
+    # =========================================================
+    # REGULATORY
+    # =========================================================
+
     if checks.get("regulatory"):
         considerations.append(
             "Regulatory requirements: Check the applicable AYUSH "
             "and other regulatory requirements for the product."
         )
 
+    # =========================================================
     # ABS
+    # =========================================================
+
     if checks.get("abs"):
         considerations.append(
             "Access and Benefit-Sharing: Check whether biodiversity "
             "and ABS requirements apply to the biological resource."
         )
 
-    # Trademark
+    # =========================================================
+    # TRADEMARK
+    # =========================================================
+
     if checks.get("trademark"):
         considerations.append(
             "Trademark: Check whether the proposed name, brand, or "
             "logo is available for trademark protection."
         )
 
-    # Design
+    # =========================================================
+    # DESIGN
+    # =========================================================
+
     if checks.get("design"):
         considerations.append(
             "Design protection: Check whether the visual appearance "
             "or packaging qualifies for design protection."
         )
 
-    # Trade secret
+    # =========================================================
+    # TRADE SECRET
+    # =========================================================
+
     if checks.get("trade_secret"):
         considerations.append(
             "Trade secret: Check whether confidential information, "
             "formulas, or processes should be protected as trade secrets."
         )
 
-    # International
+    # =========================================================
+    # INTERNATIONAL
+    # =========================================================
+
     if checks.get("international"):
         considerations.append(
             "International protection: Check the applicable "
             "international filing or protection framework."
         )
 
-    # Generic patent fallback
+    # =========================================================
+    # GENERIC PATENT FALLBACK
+    # =========================================================
+
     if not considerations and ip_type == "patent":
         considerations.extend([
             "Patentability: Check novelty, inventive step "
             "(non-obviousness), and industrial applicability.",
             "Prior art: Check whether the invention has already "
-            "been disclosed or is already known.",
+            "been disclosed or is already known."
         ])
 
     return considerations
@@ -218,7 +255,10 @@ def chat():
         message
     )
 
-    # Save user message
+    # =========================================================
+    # SAVE USER MESSAGE
+    # =========================================================
+
     db.session.add(
         Message(
             conversation_id=conversation.id,
@@ -236,9 +276,9 @@ def chat():
 
         start = time.time()
 
-        # =========================================================
+        # =====================================================
         # 1. QUERY REWRITING
-        # =========================================================
+        # =====================================================
 
         rewritten_query = rewrite_query(
             message,
@@ -255,9 +295,9 @@ def chat():
             rewritten_query
         )
 
-        # =========================================================
+        # =====================================================
         # 2. CLASSIFICATION
-        # =========================================================
+        # =====================================================
 
         classification, classification_confidence = classify_query(
             rewritten_query
@@ -268,9 +308,14 @@ def chat():
             classification
         )
 
-        # =========================================================
+        print(
+            "Classification Confidence:",
+            classification_confidence
+        )
+
+        # =====================================================
         # 3. HYBRID RETRIEVAL
-        # =========================================================
+        # =====================================================
 
         results = hybrid_search(
             rewritten_query,
@@ -285,9 +330,14 @@ def chat():
             "sec"
         )
 
-        # =========================================================
+        print(
+            "Retrieved Documents:",
+            len(results)
+        )
+
+        # =====================================================
         # NO RETRIEVAL RESULTS
-        # =========================================================
+        # =====================================================
 
         if not results:
 
@@ -312,6 +362,7 @@ def chat():
                 "answer": no_info_answer,
                 "citations": [],
                 "confidence": 0.0,
+                "confidence_level": "Low",
                 "classification": classification,
                 "classification_confidence": (
                     classification_confidence
@@ -322,9 +373,9 @@ def chat():
                 "language": language
             })
 
-        # =========================================================
+        # =====================================================
         # 4. RERANKING
-        # =========================================================
+        # =====================================================
 
         reranked_results = rerank_documents(
             rewritten_query,
@@ -338,9 +389,31 @@ def chat():
             "sec"
         )
 
-        # =========================================================
+        print(
+            "Reranked Documents:",
+            len(reranked_results)
+        )
+
+        # =====================================================
+        # CHECK RERANKER STATUS
+        # =====================================================
+
+        reranker_enabled = (
+            os.getenv(
+                "DISABLE_RERANKER",
+                "false"
+            ).strip().lower()
+            != "true"
+        )
+
+        print(
+            "Reranker Enabled:",
+            reranker_enabled
+        )
+
+        # =====================================================
         # NO RERANKED RESULTS
-        # =========================================================
+        # =====================================================
 
         if not reranked_results:
 
@@ -365,6 +438,7 @@ def chat():
                 "answer": no_info_answer,
                 "citations": [],
                 "confidence": 0.0,
+                "confidence_level": "Low",
                 "classification": classification,
                 "classification_confidence": (
                     classification_confidence
@@ -375,13 +449,14 @@ def chat():
                 "language": language
             })
 
-        # =========================================================
+        # =====================================================
         # 5. GENERATE ANSWER
-        # =========================================================
+        # =====================================================
 
-        # Use the ORIGINAL user question for answer generation.
-        # The rewritten query was already used for:
+        # Use ORIGINAL user question for answer generation.
+        # Rewritten query was used for:
         # classification -> retrieval -> reranking.
+
         answer, source_citations = generate_answer(
             message,
             reranked_results,
@@ -395,9 +470,9 @@ def chat():
             "sec"
         )
 
-        # =========================================================
+        # =====================================================
         # 6. VALIDATE CITATIONS
-        # =========================================================
+        # =====================================================
 
         documents = [
             document
@@ -409,13 +484,22 @@ def chat():
             documents
         )
 
-        # =========================================================
+        print(
+            "Citation Validation:",
+            validation
+        )
+
+        # =====================================================
         # 7. BUILD CITATIONS
-        # =========================================================
+        # =====================================================
 
         citations = []
 
         for number in validation["valid_citations"]:
+
+            # Safety check
+            if number < 1 or number > len(documents):
+                continue
 
             document = documents[number - 1]
 
@@ -441,14 +525,42 @@ def chat():
                 )
             })
 
-        # =========================================================
+        # =====================================================
         # 8. CONFIDENCE
-        # =========================================================
+        # =====================================================
 
         confidence = calculate_confidence(
             reranked_results,
-            citation_valid=validation["valid"]
+            citation_valid=validation["valid"],
+            reranker_enabled=reranker_enabled
         )
+
+        # =====================================================
+        # CONFIDENCE LEVEL
+        # =====================================================
+
+        if confidence >= 0.75:
+            confidence_level = "High"
+
+        elif confidence >= 0.50:
+            confidence_level = "Medium"
+
+        else:
+            confidence_level = "Low"
+
+        print(
+            "Confidence:",
+            confidence
+        )
+
+        print(
+            "Confidence Level:",
+            confidence_level
+        )
+
+        # =====================================================
+        # 9. TOTAL TIME
+        # =====================================================
 
         print(
             "TOTAL:",
@@ -456,9 +568,9 @@ def chat():
             "sec"
         )
 
-        # =========================================================
-        # 9. SAVE ASSISTANT MESSAGE
-        # =========================================================
+        # =====================================================
+        # 10. SAVE ASSISTANT MESSAGE
+        # =====================================================
 
         _save_assistant_message(
             conversation.id,
@@ -469,9 +581,9 @@ def chat():
             language=language
         )
 
-        # =========================================================
-        # 10. RESPONSE
-        # =========================================================
+        # =====================================================
+        # 11. RESPONSE
+        # =====================================================
 
         return jsonify({
             "query": message,
@@ -481,6 +593,7 @@ def chat():
             "answer": answer,
             "citations": citations,
             "confidence": confidence,
+            "confidence_level": confidence_level,
             "classification": classification,
             "classification_confidence": (
                 classification_confidence
