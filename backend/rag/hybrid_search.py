@@ -244,6 +244,9 @@ def hybrid_search(
         "sec"
     )
 
+    # ---------------------------------------------------------
+    # No results
+    # ---------------------------------------------------------
     if not vector_results and not keyword_results:
         return []
 
@@ -296,9 +299,13 @@ def hybrid_search(
     # ---------------------------------------------------------
     # Combine results using RRF
     # ---------------------------------------------------------
-    all_keys = (
-        set(vector_ranks.keys())
-        .union(keyword_ranks.keys())
+    # sorted() is used instead of set iteration
+    # to keep result ordering deterministic.
+    # ---------------------------------------------------------
+    all_keys = sorted(
+        set(vector_ranks.keys()).union(
+            keyword_ranks.keys()
+        )
     )
 
     final_results = []
@@ -308,6 +315,9 @@ def hybrid_search(
         document = None
         hybrid_score = 0.0
 
+        # -----------------------------------------------------
+        # Vector contribution
+        # -----------------------------------------------------
         if key in vector_ranks:
 
             document = vector_ranks[key][0]
@@ -318,6 +328,9 @@ def hybrid_search(
                 VECTOR_WEIGHT
             )
 
+        # -----------------------------------------------------
+        # Keyword contribution
+        # -----------------------------------------------------
         if key in keyword_ranks:
 
             document = keyword_ranks[key][0]
@@ -336,11 +349,27 @@ def hybrid_search(
         )
 
     # ---------------------------------------------------------
-    # Sort
+    # Sort by:
+    # 1. Hybrid score descending
+    # 2. Source name
+    # 3. Page number
+    #
+    # This gives deterministic ordering when scores are equal.
     # ---------------------------------------------------------
     final_results.sort(
-        key=lambda item: item[1],
-        reverse=True
+        key=lambda item: (
+            -item[1],
+            item[0].metadata.get(
+                "source",
+                ""
+            ),
+            str(
+                item[0].metadata.get(
+                    "page",
+                    ""
+                )
+            )
+        )
     )
 
     # ---------------------------------------------------------
