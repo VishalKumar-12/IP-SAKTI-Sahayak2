@@ -528,11 +528,14 @@ def chat():
         # =====================================================
         # 8. CONFIDENCE
         # =====================================================
-
+        abstained = answer.strip().lower().startswith(
+            "i could not find sufficient information"
+        )
         confidence = calculate_confidence(
             reranked_results,
             citation_valid=validation["valid"],
-            reranker_enabled=reranker_enabled
+            reranker_enabled=reranker_enabled,
+            abstained=abstained
         )
 
         # =====================================================
