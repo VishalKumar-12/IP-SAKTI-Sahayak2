@@ -3,87 +3,88 @@ def calculate_confidence(
     citation_valid=True
 ):
     """
-    Calculate an evidence-strength confidence score.
+    Calculate evidence confidence for the generated answer.
 
-    This is NOT a probability.
-    It indicates how strongly the retrieved evidence
-    supports the generated answer.
+    The reranker currently returns relevance scores in the
+    0-1 range, so we use those scores directly instead of
+    applying arbitrary score buckets.
 
-    The function is designed to work both when the
-    CrossEncoder reranker is enabled and when it is
-    disabled.
+    This is an evidence-strength indicator, not a calibrated
+    probability.
     """
 
     if not results:
         return 0.0
 
-    # ---------------------------------------------------------
-    # 1. Evidence count
-    # ---------------------------------------------------------
+    # ---------------------------------
+    # 1. Reranker relevance
+    # ---------------------------------
 
-    evidence_count = min(
-        len(results),
-        5
+    scores = []
+
+    for _, score in results:
+        try:
+            score = float(score)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        # Reranker is expected to return 0-1.
+        score = max(0.0, min(1.0, score))
+        scores.append(score)
+
+    if not scores:
+        return 0.0
+
+    # Strongest retrieved evidence
+    top_score = scores[0]
+
+    # Average quality of retrieved evidence
+    average_score = sum(scores) / len(scores)
+
+    # ---------------------------------
+    # 2. Evidence coverage
+    # ---------------------------------
+
+    # More supporting documents increase confidence,
+    # but with diminishing returns.
+    evidence_score = min(
+        len(scores) / 5,
+        1.0
     )
 
-    evidence_score = evidence_count / 5.0
+    # ---------------------------------
+    # 3. Rank quality
+    # ---------------------------------
 
-    # ---------------------------------------------------------
-    # 2. Retrieval score
-    # ---------------------------------------------------------
-    #
-    # Hybrid RRF scores are normally very small
-    # (around 0.01), so they must NOT be treated
-    # as 0-1 relevance scores.
-    #
-    # We therefore use rank-based evidence quality.
-    # ---------------------------------------------------------
+    # Give more importance to higher-ranked documents.
+    rank_weights = [
+        1 / (index + 1)
+        for index in range(len(scores))
+    ]
 
-    rank_scores = []
-
-    for index, (_, score) in enumerate(
-        results[:5],
-        start=1
-    ):
-        # Higher ranked evidence gets higher score.
-        rank_score = 1.0 / index
-        rank_scores.append(rank_score)
-
-    if rank_scores:
-        rank_quality = sum(rank_scores) / len(rank_scores)
-    else:
-        rank_quality = 0.0
-
-    # Normalize rank quality approximately to 0-1.
-    max_rank_quality = sum(
-        1.0 / index
-        for index in range(1, 6)
+    rank_score = (
+        sum(rank_weights) /
+        len(rank_weights)
     )
 
-    rank_quality = (
-        rank_quality / max_rank_quality
-        if max_rank_quality
-        else 0.0
-    )
-
-    # ---------------------------------------------------------
-    # 3. Citation validation
-    # ---------------------------------------------------------
+    # ---------------------------------
+    # 4. Citation validation
+    # ---------------------------------
 
     citation_score = (
-        1.0
-        if citation_valid
-        else 0.0
+        1.0 if citation_valid else 0.0
     )
 
-    # ---------------------------------------------------------
-    # 4. Final confidence
-    # ---------------------------------------------------------
+    # ---------------------------------
+    # 5. Final confidence
+    # ---------------------------------
 
     confidence = (
-        (evidence_score * 0.40)
-        + (rank_quality * 0.35)
-        + (citation_score * 0.25)
+        (top_score * 0.40)
+        + (average_score * 0.20)
+        + (evidence_score * 0.15)
+        + (rank_score * 0.10)
+        + (citation_score * 0.15)
     )
 
     confidence = max(
