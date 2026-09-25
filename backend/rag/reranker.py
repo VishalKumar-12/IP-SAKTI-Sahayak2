@@ -1,5 +1,4 @@
 import os
-from sentence_transformers import CrossEncoder
 
 MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
@@ -9,11 +8,19 @@ _reranker = None
 def get_reranker():
     global _reranker
 
+    # Render/lightweight mode:
+    # Do not even import sentence-transformers when reranker is disabled.
     if os.getenv("DISABLE_RERANKER", "false").lower() == "true":
         return None
 
     if _reranker is None:
         print("Loading CrossEncoder reranker...")
+
+        # Lazy import:
+        # sentence-transformers and its ML dependencies are loaded
+        # only when reranking is actually enabled.
+        from sentence_transformers import CrossEncoder
+
         _reranker = CrossEncoder(
             MODEL_NAME,
             max_length=512
@@ -29,7 +36,8 @@ def rerank_documents(query, results, top_k=5):
 
     reranker = get_reranker()
 
-    # Render / lightweight mode
+    # Lightweight / Render mode:
+    # Skip CrossEncoder and preserve retrieval order.
     if reranker is None:
         return results[:top_k]
 
